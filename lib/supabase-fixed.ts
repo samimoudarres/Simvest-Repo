@@ -37,17 +37,30 @@ function createMockClient() {
   // It allows the app to function without Supabase connection
   const mockMethods = {
     from: () => ({
-      select: () => ({ data: null, error: null }),
-      insert: () => ({ data: null, error: null }),
-      update: () => ({ data: null, error: null }),
-      delete: () => ({ data: null, error: null }),
-      upsert: () => ({ data: null, error: null }),
+      select: () => Promise.resolve({ data: null, error: null }),
+      insert: () => Promise.resolve({ data: null, error: null }),
+      update: () => Promise.resolve({ data: null, error: null }),
+      delete: () => Promise.resolve({ data: null, error: null }),
+      upsert: () => Promise.resolve({ data: null, error: null }),
+      eq: function () {
+        return this
+      },
+      single: function () {
+        return this
+      },
+      order: function () {
+        return this
+      },
+      limit: function () {
+        return this
+      },
     }),
     auth: {
       getSession: () => Promise.resolve({ data: { session: null }, error: null }),
       getUser: () => Promise.resolve({ data: { user: null }, error: null }),
       signInWithPassword: () => Promise.resolve({ data: { user: null }, error: null }),
       signOut: () => Promise.resolve({ error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
     channel: () => ({
       on: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }),
@@ -57,7 +70,7 @@ function createMockClient() {
   return mockMethods as unknown as SupabaseClient
 }
 
-// Update the server client creation to be more robust too
+// Server client that doesn't use next/headers
 export function createServerSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
