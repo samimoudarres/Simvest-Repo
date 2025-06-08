@@ -7,14 +7,7 @@ export default function ActivityPage() {
 
       {/* Create Post Section */}
       <div className="px-4 mb-6">
-        <CreatePost
-          gameId="112024"
-          onPostCreated={() => {
-            // Refresh the activity feed
-            window.location.reload()
-          }}
-          placeholder="What are you trading today? Share your thoughts..."
-        />
+        <CreatePost gameId="112024" placeholder="What are you trading today? Share your thoughts..." />
       </div>
 
       {/* Activity Feed (Placeholder) */}

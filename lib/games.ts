@@ -314,3 +314,112 @@ export async function getUserGames(userId: string) {
     }
   }
 }
+
+export async function joinGame(gameCode: string, userId: string) {
+  console.log("🎮 Joining game:", gameCode, "for user:", userId)
+
+  try {
+    const supabase = createClientSupabaseClient()
+
+    // First validate the game exists and is active
+    const gameValidation = await validateGameCode(gameCode)
+    if (!gameValidation.valid || !gameValidation.game) {
+      return {
+        success: false,
+        error: gameValidation.error || "Game not found",
+        game: null,
+      }
+    }
+
+    const game = gameValidation.game
+
+    // Check if user is already a participant
+    const { data: existingParticipant, error: checkError } = await supabase
+      .from("game_participants")
+      .select("id")
+      .eq("game_id", game.id)
+      .eq("user_id", userId)
+      .single()
+
+    if (checkError && checkError.code !== "PGRST116") {
+      console.error("❌ Error checking existing participant:", checkError)
+      return {
+        success: false,
+        error: "Failed to check participation status",
+        game: null,
+      }
+    }
+
+    if (existingParticipant) {
+      console.log("ℹ️ User already in game")
+      return {
+        success: true,
+        error: null,
+        game,
+        message: "Already joined this game",
+      }
+    }
+
+    // Check if game is full
+    if (game.current_players >= game.max_players) {
+      return {
+        success: false,
+        error: "Game is full",
+        game: null,
+      }
+    }
+
+    // Add user as participant
+    const { error: participantError } = await supabase.from("game_participants").insert({
+      game_id: game.id,
+      user_id: userId,
+      joined_at: new Date().toISOString(),
+      initial_balance: game.buy_in_amount || 100000,
+      current_balance: game.buy_in_amount || 100000,
+      total_return: 0,
+      daily_return: 0,
+      rank: game.current_players + 1,
+    })
+
+    if (participantError) {
+      console.error("❌ Error adding participant:", participantError)
+      return {
+        success: false,
+        error: "Failed to join game",
+        game: null,
+      }
+    }
+
+    // Update game participant count
+    const { error: updateError } = await supabase
+      .from("games")
+      .update({
+        current_players: game.current_players + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", game.id)
+
+    if (updateError) {
+      console.error("❌ Error updating game participant count:", updateError)
+      // Don't fail the join operation for this
+    }
+
+    console.log("✅ Successfully joined game")
+
+    return {
+      success: true,
+      error: null,
+      game: {
+        ...game,
+        current_players: game.current_players + 1,
+      },
+    }
+  } catch (error) {
+    console.error("💥 Error joining game:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to join game",
+      game: null,
+    }
+  }
+}

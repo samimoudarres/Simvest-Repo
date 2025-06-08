@@ -150,3 +150,102 @@ function getStockLogo(symbol: string): string {
 
   return logos[symbol] || "📈"
 }
+
+export async function getMultipleStocks(symbols: string[]): Promise<Stock[]> {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // Try to get stocks from database
+    const { data: stocks, error } = await supabase
+      .from("stock_cache")
+      .select("*")
+      .in(
+        "symbol",
+        symbols.map((s) => s.toUpperCase()),
+      )
+      .order("symbol")
+
+    if (error) {
+      console.warn("Failed to fetch multiple stocks from database:", error)
+      // Return mock data for requested symbols
+      return symbols.map((symbol) => {
+        const mockStock = mockStocks.find((s) => s.symbol === symbol.toUpperCase())
+        return (
+          mockStock || {
+            symbol: symbol.toUpperCase(),
+            name: symbol.toUpperCase(),
+            price: Math.random() * 200 + 50,
+            change: (Math.random() - 0.5) * 10,
+            changePercent: (Math.random() - 0.5) * 5,
+            logo: getStockLogo(symbol.toUpperCase()),
+          }
+        )
+      })
+    }
+
+    if (!stocks || stocks.length === 0) {
+      // Return mock data for requested symbols
+      return symbols.map((symbol) => {
+        const mockStock = mockStocks.find((s) => s.symbol === symbol.toUpperCase())
+        return (
+          mockStock || {
+            symbol: symbol.toUpperCase(),
+            name: symbol.toUpperCase(),
+            price: Math.random() * 200 + 50,
+            change: (Math.random() - 0.5) * 10,
+            changePercent: (Math.random() - 0.5) * 5,
+            logo: getStockLogo(symbol.toUpperCase()),
+          }
+        )
+      })
+    }
+
+    // Transform database data to Stock interface
+    const dbStocks = stocks.map((stock) => ({
+      symbol: stock.symbol,
+      name: stock.name || stock.symbol,
+      price: Number.parseFloat(stock.price) || 0,
+      change: Number.parseFloat(stock.change) || 0,
+      changePercent: Number.parseFloat(stock.change_percent) || 0,
+      volume: stock.volume ? Number.parseInt(stock.volume) : undefined,
+      marketCap: stock.market_cap ? Number.parseInt(stock.market_cap) : undefined,
+      logo: getStockLogo(stock.symbol),
+    }))
+
+    // Fill in missing symbols with mock data
+    const foundSymbols = dbStocks.map((s) => s.symbol)
+    const missingSymbols = symbols.filter((s) => !foundSymbols.includes(s.toUpperCase()))
+
+    const missingStocks = missingSymbols.map((symbol) => {
+      const mockStock = mockStocks.find((s) => s.symbol === symbol.toUpperCase())
+      return (
+        mockStock || {
+          symbol: symbol.toUpperCase(),
+          name: symbol.toUpperCase(),
+          price: Math.random() * 200 + 50,
+          change: (Math.random() - 0.5) * 10,
+          changePercent: (Math.random() - 0.5) * 5,
+          logo: getStockLogo(symbol.toUpperCase()),
+        }
+      )
+    })
+
+    return [...dbStocks, ...missingStocks]
+  } catch (error) {
+    console.error("Error fetching multiple stocks:", error)
+    // Return mock data for all requested symbols
+    return symbols.map((symbol) => {
+      const mockStock = mockStocks.find((s) => s.symbol === symbol.toUpperCase())
+      return (
+        mockStock || {
+          symbol: symbol.toUpperCase(),
+          name: symbol.toUpperCase(),
+          price: Math.random() * 200 + 50,
+          change: (Math.random() - 0.5) * 10,
+          changePercent: (Math.random() - 0.5) * 5,
+          logo: getStockLogo(symbol.toUpperCase()),
+        }
+      )
+    })
+  }
+}

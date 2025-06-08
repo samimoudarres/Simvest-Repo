@@ -1,143 +1,120 @@
 "use client"
 
-import type React from "react"
+import React, { useState } from "react"
+import {
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  Button,
+  FormControl,
+  FormLabel,
+  Input,
+  Textarea,
+  useToast,
+} from "@chakra-ui/react"
+import { useMutation } from "@apollo/client"
+import { CREATE_POST } from "../graphql/mutations"
 
-import { useState } from "react"
-import { Send, Loader2, X } from "lucide-react"
-import { useAuth } from "@/contexts/auth-context"
-import { createActivityPost } from "@/lib/social-interactions"
-
+// Remove onPostCreated from the interface
 interface CreatePostProps {
   gameId: string
-  onPostCreated?: () => void
   placeholder?: string
-  className?: string
 }
 
-export default function CreatePost({
-  gameId,
-  onPostCreated,
-  placeholder = "What are you trading today?",
-  className = "",
-}: CreatePostProps) {
-  const { user } = useAuth()
+const CreatePost: React.FC<CreatePostProps> = ({ gameId, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const onClose = () => setIsOpen(false)
+  const cancelRef = React.useRef(null)
+  const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [isExpanded, setIsExpanded] = useState(false)
+  const toast = useToast()
+
+  const [createPost, { loading }] = useMutation(CREATE_POST, {
+    onError: (error) => {
+      toast({
+        title: "Error creating post.",
+        description: error.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      })
+    },
+    onCompleted: () => {
+      toast({
+        title: "Post created.",
+        description: "Your post has been created successfully.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      })
+      onClose()
+      // Refresh the page or trigger a state update
+      window.location.reload()
+    },
+  })
 
   const handleSubmit = async () => {
-    if (!user || !content.trim() || isSubmitting) return
-
-    setIsSubmitting(true)
-    setError(null)
-
-    try {
-      const {
-        success,
-        post,
-        error: postError,
-      } = await createActivityPost(user.id, gameId, {
-        post_type: "general",
-        content: content.trim(),
+    if (!title || !content) {
+      toast({
+        title: "Missing fields.",
+        description: "Please fill in all fields.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
       })
-
-      if (success && post) {
-        setContent("")
-        setIsExpanded(false)
-        onPostCreated?.()
-      } else {
-        setError(postError || "Failed to create post")
-      }
-    } catch (error) {
-      console.error("Error creating post:", error)
-      setError("Failed to create post. Please try again.")
-    } finally {
-      setIsSubmitting(false)
+      return
     }
-  }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit()
-    }
-  }
-
-  if (!user) {
-    return null
+    await createPost({
+      variables: {
+        gameId: gameId,
+        title: title,
+        content: content,
+      },
+    })
   }
 
   return (
-    <div className={`bg-white rounded-xl shadow-md p-4 mb-6 ${className}`}>
-      <div className="flex items-start space-x-3">
-        <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0 overflow-hidden">
-          {user.user_metadata?.avatar_url ? (
-            <img
-              src={user.user_metadata.avatar_url || "/placeholder.svg"}
-              alt="Your profile"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full bg-blue-500 flex items-center justify-center text-white font-medium">
-              {user.user_metadata?.display_name?.charAt(0) || "?"}
-            </div>
-          )}
-        </div>
+    <>
+      <Button onClick={() => setIsOpen(true)} colorScheme="blue">
+        {placeholder || "Create Post"}
+      </Button>
 
-        <div className="flex-1">
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onFocus={() => setIsExpanded(true)}
-            onKeyPress={handleKeyPress}
-            placeholder={placeholder}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#f7b104] resize-none"
-            rows={isExpanded ? 3 : 1}
-            disabled={isSubmitting}
-          />
+      <AlertDialog isOpen={isOpen} leastDestructiveRef={cancelRef} onClose={onClose}>
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Create a New Post
+            </AlertDialogHeader>
 
-          {error && (
-            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-600 text-sm">{error}</p>
-            </div>
-          )}
+            <AlertDialogBody>
+              <FormControl>
+                <FormLabel>Title</FormLabel>
+                <Input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
+              </FormControl>
 
-          {isExpanded && (
-            <div className="flex items-center justify-between mt-3">
-              <button
-                onClick={() => {
-                  setIsExpanded(false)
-                  setContent("")
-                  setError(null)
-                }}
-                className="text-gray-500 hover:text-gray-700 transition-colors"
-                disabled={isSubmitting}
-              >
-                <X size={20} />
-              </button>
+              <FormControl mt={4}>
+                <FormLabel>Content</FormLabel>
+                <Textarea value={content} onChange={(e) => setContent(e.target.value)} />
+              </FormControl>
+            </AlertDialogBody>
 
-              <button
-                onClick={handleSubmit}
-                disabled={!content.trim() || isSubmitting}
-                className="bg-[#f7b104] text-white px-4 py-2 rounded-full font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-100 active:scale-95 flex items-center"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin mr-2" />
-                    Posting...
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} className="mr-2" />
-                    Post
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={onClose}>
+                Cancel
+              </Button>
+              <Button colorScheme="blue" onClick={handleSubmit} ml={3} isLoading={loading}>
+                Create
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+    </>
   )
 }
+
+export default CreatePost
