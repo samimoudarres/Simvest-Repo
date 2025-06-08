@@ -1,35 +1,27 @@
-import { ArrowLeft } from "lucide-react"
-import Link from "next/link"
-import BottomNavigation from "@/components/bottom-navigation"
+import CreatePost from "@/components/create-post"
 
 export default function ActivityPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-[#f7f7f7] max-w-md mx-auto">
-      {/* Header */}
-      <div className="bg-gradient-to-b from-[#f7b104] to-[#d48f03] p-5 pb-8 sticky top-0 z-10">
-        <div className="flex justify-between items-center mb-3">
-          <Link href="/" className="text-white p-2">
-            <ArrowLeft size={28} />
-          </Link>
-          <h1 className="text-white text-4xl font-bold">ACTIVITY</h1>
-          <div className="w-10"></div>
-        </div>
-        <h2 className="text-white text-center text-xl font-medium mb-4">NOV. 2024 STOCK CHALLENGE</h2>
+    <div className="container mx-auto py-8">
+      <h1 className="text-2xl font-bold mb-4">Activity Feed</h1>
+
+      {/* Create Post Section */}
+      <div className="px-4 mb-6">
+        <CreatePost
+          gameId="112024"
+          onPostCreated={() => {
+            // Refresh the activity feed
+            window.location.reload()
+          }}
+          placeholder="What are you trading today? Share your thoughts..."
+        />
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 p-5 overflow-y-auto">
-        <h3 className="text-2xl font-bold mb-6">Recent Activity</h3>
-
-        {/* Activity content would go here */}
-        <div className="bg-white rounded-xl p-5 shadow-md mb-4">
-          <p className="text-lg font-medium">Activity feed coming soon!</p>
-          <p className="text-gray-500">Check back later for updates on trading activity.</p>
-        </div>
+      {/* Activity Feed (Placeholder) */}
+      <div className="bg-gray-100 p-4 rounded-md">
+        <p>Activity feed content will be displayed here.</p>
+        {/* Add your activity feed components here */}
       </div>
-
-      {/* Bottom Navigation */}
-      <BottomNavigation />
     </div>
   )
 }

@@ -2,202 +2,273 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { Heart, MessageCircle, Share2 } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
-import { likePost, addComment, getPostComments } from "@/lib/social-interactions"
+import { useState, useEffect } from "react"
+import { Heart, MessageSquare, Share, Send, Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
+import {
+  toggleLike,
+  addComment,
+  getPostComments,
+  hasUserLikedPost,
+  type ActivityPost,
+  type Comment,
+} from "@/lib/social-interactions"
 
-interface ActivityCardProps {
-  post: {
-    id: string
-    user: {
-      name: string
-      avatar?: string
-    }
-    content: string
-    created_at: string
-    likes: number
-    comments: number
-    liked_by_user: boolean
-  }
+type ActivityCardProps = {
+  post: ActivityPost
   onUpdate?: () => void
 }
 
 export default function ActivityCardEnhanced({ post, onUpdate }: ActivityCardProps) {
+  const router = useRouter()
   const { user } = useAuth()
-  const [isLiked, setIsLiked] = useState(post.liked_by_user)
-  const [likeCount, setLikeCount] = useState(post.likes)
-  const [commentCount, setCommentCount] = useState(post.comments)
   const [showComments, setShowComments] = useState(false)
-  const [commentText, setCommentText] = useState("")
-  const [comments, setComments] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [newComment, setNewComment] = useState("")
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [submittingComment, setSubmittingComment] = useState(false)
+  const [likesCount, setLikesCount] = useState(post.likes_count || 0)
+  const [commentsCount, setCommentsCount] = useState(post.comments_count || 0)
+  const [isLiked, setIsLiked] = useState(false)
+  const [likingPost, setLikingPost] = useState(false)
 
-  // Format the post date
-  const formattedDate = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
+  // Check if user has liked this post
+  useEffect(() => {
+    const checkLikeStatus = async () => {
+      if (!user) return
 
-  // Handle like button click
+      try {
+        const { liked } = await hasUserLikedPost(user.id, post.id)
+        setIsLiked(liked)
+      } catch (error) {
+        console.error("Error checking like status:", error)
+      }
+    }
+
+    checkLikeStatus()
+  }, [user, post.id])
+
   const handleLike = async () => {
-    if (!user) return
+    if (!user || likingPost) return
 
+    setLikingPost(true)
     try {
-      const result = await likePost(post.id, user.id)
-
-      if (result.success) {
-        setIsLiked(result.liked)
-        setLikeCount(result.likes)
-        if (onUpdate) onUpdate()
+      const { success, liked } = await toggleLike(user.id, post.id)
+      if (success) {
+        setIsLiked(liked)
+        setLikesCount((prev) => (liked ? prev + 1 : Math.max(0, prev - 1)))
+        onUpdate?.()
       }
     } catch (error) {
       console.error("Error liking post:", error)
+    } finally {
+      setLikingPost(false)
     }
   }
 
-  // Load comments
   const loadComments = async () => {
-    if (!showComments) {
-      setIsLoading(true)
-      try {
-        const result = await getPostComments(post.id)
+    if (loadingComments) return
 
-        if (result.success) {
-          setComments(result.comments)
-        }
-      } catch (error) {
+    setLoadingComments(true)
+    try {
+      const { comments: fetchedComments, error } = await getPostComments(post.id)
+      if (error) {
         console.error("Error loading comments:", error)
-      } finally {
-        setIsLoading(false)
+      } else {
+        setComments(fetchedComments)
+        setCommentsCount(fetchedComments.length)
       }
+    } catch (error) {
+      console.error("Error loading comments:", error)
+    } finally {
+      setLoadingComments(false)
     }
+  }
 
+  const handleShowComments = async () => {
+    if (!showComments) {
+      await loadComments()
+    }
     setShowComments(!showComments)
   }
 
-  // Submit a new comment
-  const submitComment = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleAddComment = async () => {
+    if (!user || !newComment.trim() || submittingComment) return
 
-    if (!user || !commentText.trim()) return
-
+    setSubmittingComment(true)
     try {
-      const result = await addComment(post.id, user.id, commentText)
-
-      if (result.success) {
-        setCommentText("")
-        setCommentCount((prev) => prev + 1)
-        setComments((prev) => [...prev, result.comment])
-        if (onUpdate) onUpdate()
+      const { success, comment, error } = await addComment(user.id, post.id, newComment.trim())
+      if (error) {
+        console.error("Error adding comment:", error)
+      } else if (comment) {
+        setComments((prev) => [...prev, comment])
+        setCommentsCount((prev) => prev + 1)
+        setNewComment("")
+        onUpdate?.()
       }
     } catch (error) {
-      console.error("Error submitting comment:", error)
+      console.error("Error adding comment:", error)
+    } finally {
+      setSubmittingComment(false)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      handleAddComment()
     }
   }
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-md mb-4">
-      {/* User info */}
-      <div className="flex items-start space-x-3 mb-3">
-        <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200">
-          {post.user.avatar ? (
+    <div className="bg-white rounded-2xl p-4 shadow-md mb-4 hover:shadow-lg transition-shadow">
+      {/* Post Header */}
+      <div className="flex mb-3">
+        <button
+          className="w-12 h-12 rounded-full bg-gray-200 mr-3 flex-shrink-0 flex items-center justify-center overflow-hidden shadow-sm transition-transform duration-100 active:scale-95"
+          onClick={() => router.push(`/profile/${post.users?.username}`)}
+        >
+          {post.users?.profile_picture_url ? (
             <img
-              src={post.user.avatar || "/placeholder.svg"}
-              alt={post.user.name}
+              src={post.users.profile_picture_url || "/placeholder.svg"}
+              alt={post.users.display_name}
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full bg-gray-300 flex items-center justify-center">
-              <span className="text-gray-600 font-medium">{post.user.name.charAt(0)}</span>
-            </div>
+            <span className="text-lg font-bold text-gray-600">
+              {post.users?.display_name?.charAt(0).toUpperCase() || "?"}
+            </span>
           )}
+        </button>
+        <div className="flex-1">
+          <p>
+            <button
+              className="font-bold hover:text-[#f7b104] transition-colors"
+              onClick={() => router.push(`/profile/${post.users?.username}`)}
+            >
+              {post.users?.display_name || "Unknown User"}
+            </button>{" "}
+            <span className="text-gray-600">{post.post_type === "trade" ? "made a trade" : "shared a post"}</span>
+          </p>
+          <p className="text-gray-500 text-xs">{new Date(post.created_at).toLocaleString()}</p>
         </div>
-        <div>
-          <h4 className="font-medium">{post.user.name}</h4>
-          <p className="text-gray-500 text-xs">{formattedDate}</p>
-        </div>
       </div>
 
-      {/* Post content */}
-      <div className="bg-gray-50 rounded-xl p-4 mb-3">
-        <p className="text-gray-800">{post.content}</p>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex justify-between pt-2">
-        <button
-          onClick={handleLike}
-          className={`flex items-center space-x-1 px-2 py-1 rounded-lg ${
-            isLiked ? "text-red-500" : "text-gray-500"
-          } hover:bg-gray-100`}
-        >
-          <Heart size={18} fill={isLiked ? "currentColor" : "none"} />
-          <span>{likeCount}</span>
-        </button>
-        <button
-          onClick={loadComments}
-          className="flex items-center space-x-1 px-2 py-1 rounded-lg text-gray-500 hover:bg-gray-100"
-        >
-          <MessageCircle size={18} />
-          <span>{commentCount}</span>
-        </button>
-        <button className="flex items-center space-x-1 px-2 py-1 rounded-lg text-gray-500 hover:bg-gray-100">
-          <Share2 size={18} />
-          <span>Share</span>
-        </button>
-      </div>
-
-      {/* Comments section */}
-      {showComments && (
-        <div className="mt-3 pt-3 border-t">
-          {isLoading ? (
-            <div className="text-center py-2">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-500 mx-auto"></div>
+      {/* Post Content */}
+      <div className="bg-[#edf4fa] rounded-xl p-4 shadow-sm mb-3">
+        <p className="text-gray-800 mb-2 whitespace-pre-wrap">{post.content}</p>
+        {post.stock_symbol && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center mr-2">
+                <span className="text-white text-xs font-bold">{post.stock_symbol.charAt(0)}</span>
+              </div>
+              <span className="font-bold">{post.stock_symbol}</span>
             </div>
-          ) : comments.length > 0 ? (
-            <div className="space-y-3 mb-3">
-              {comments.map((comment) => (
-                <div key={comment.id} className="flex space-x-2">
-                  <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
-                    {comment.user.avatar ? (
+            {post.trade_amount && <span className="text-sm text-gray-600">${post.trade_amount.toFixed(2)}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Post Actions */}
+      <div className="flex justify-between mt-3 pt-3 border-t">
+        <button
+          className={`text-sm flex items-center transition-all duration-100 active:scale-95 ${
+            isLiked ? "text-red-500" : "text-gray-500 hover:text-red-500"
+          } ${likingPost ? "opacity-50 cursor-not-allowed" : ""}`}
+          onClick={handleLike}
+          disabled={likingPost}
+        >
+          <Heart size={16} className={`mr-1 ${isLiked ? "fill-current" : ""}`} />
+          {likingPost ? "..." : `Like (${likesCount})`}
+        </button>
+        <button
+          className="text-gray-500 text-sm flex items-center transition-transform duration-100 active:scale-95 hover:text-blue-500"
+          onClick={handleShowComments}
+        >
+          <MessageSquare size={16} className="mr-1" />
+          Comment ({commentsCount})
+        </button>
+        <button className="text-gray-500 text-sm flex items-center transition-transform duration-100 active:scale-95 hover:text-green-500">
+          <Share size={16} className="mr-1" />
+          Share
+        </button>
+      </div>
+
+      {/* Comments Section */}
+      {showComments && (
+        <div className="mt-4 pt-4 border-t">
+          {loadingComments ? (
+            <div className="flex justify-center py-4">
+              <Loader2 size={20} className="animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <>
+              {/* Existing Comments */}
+              {comments.length > 0 && (
+                <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+                  {comments.map((comment) => (
+                    <div key={comment.id} className="flex">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 mr-3 flex-shrink-0">
+                        {comment.users?.profile_picture_url ? (
+                          <img
+                            src={comment.users.profile_picture_url || "/placeholder.svg"}
+                            alt={comment.users.display_name}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full rounded-full bg-gray-300 flex items-center justify-center text-xs">
+                            {comment.users?.display_name?.charAt(0) || "?"}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{comment.users?.display_name || "Unknown User"}</p>
+                        <p className="text-gray-700 text-sm">{comment.comment_text}</p>
+                        <p className="text-gray-500 text-xs mt-1">{new Date(comment.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Comment */}
+              {user && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0">
+                    {user.user_metadata?.avatar_url ? (
                       <img
-                        src={comment.user.avatar || "/placeholder.svg"}
-                        alt={comment.user.name}
-                        className="w-full h-full object-cover"
+                        src={user.user_metadata.avatar_url || "/placeholder.svg"}
+                        alt="Your profile"
+                        className="w-full h-full rounded-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full bg-gray-300 flex items-center justify-center">
-                        <span className="text-gray-600 text-xs font-medium">{comment.user.name.charAt(0)}</span>
+                      <div className="w-full h-full rounded-full bg-gray-300 flex items-center justify-center text-xs">
+                        {user.user_metadata?.display_name?.charAt(0) || "?"}
                       </div>
                     )}
                   </div>
-                  <div className="bg-gray-100 rounded-lg p-2 flex-1">
-                    <p className="text-xs font-medium">{comment.user.name}</p>
-                    <p className="text-sm">{comment.content}</p>
-                  </div>
+                  <input
+                    type="text"
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Add a comment..."
+                    className="flex-1 border border-gray-300 rounded-full px-3 py-1 text-sm focus:outline-none focus:border-[#f7b104]"
+                    disabled={submittingComment}
+                  />
+                  <button
+                    onClick={handleAddComment}
+                    disabled={!newComment.trim() || submittingComment}
+                    className="bg-[#f7b104] text-white p-1.5 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-transform duration-100 active:scale-95"
+                  >
+                    {submittingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  </button>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm text-center py-2">No comments yet</p>
+              )}
+            </>
           )}
-
-          {/* Comment form */}
-          <form onSubmit={submitComment} className="flex space-x-2 mt-2">
-            <input
-              type="text"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Write a comment..."
-              className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#f7b104]"
-            />
-            <button
-              type="submit"
-              disabled={!commentText.trim()}
-              className="bg-[#f7b104] text-white px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-            >
-              Post
-            </button>
-          </form>
         </div>
       )}
     </div>
