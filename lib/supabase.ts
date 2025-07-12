@@ -33,8 +33,9 @@ export function createClientSupabaseClient() {
 
 // Add this mock client function
 function createMockClient() {
-  // This creates a mock client that won't throw errors when methods are called
-  // It allows the app to function without Supabase connection
+  // In-memory demo user for mock admin methods
+  let demoUser: any = null
+
   const mockMethods = {
     from: () => ({
       select: () => ({ data: null, error: null }),
@@ -48,6 +49,42 @@ function createMockClient() {
       getUser: () => Promise.resolve({ data: { user: null }, error: null }),
       signInWithPassword: () => Promise.resolve({ data: { user: null }, error: null }),
       signOut: () => Promise.resolve({ error: null }),
+      // Mock onAuthStateChange to match Supabase API
+      onAuthStateChange: (callback: any) => {
+        setTimeout(() => callback("SIGNED_OUT", null), 0)
+        return {
+          data: {
+            subscription: {
+              unsubscribe: () => {},
+            },
+          },
+        }
+      },
+      admin: {
+        // Mock listUsers to return the demo user if created
+        listUsers: async () => {
+          return {
+            data: {
+              users: demoUser ? [demoUser] : [],
+            },
+            error: null,
+          }
+        },
+        // Mock createUser to create the demo user in memory
+        createUser: async ({ email, password, email_confirm }: any) => {
+          demoUser = {
+            id: "demo-user-id",
+            email,
+            email_confirmed_at: email_confirm ? new Date().toISOString() : null,
+          }
+          return {
+            data: {
+              user: demoUser,
+            },
+            error: null,
+          }
+        },
+      },
     },
     channel: () => ({
       on: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }),
